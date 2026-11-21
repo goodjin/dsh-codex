@@ -7,6 +7,27 @@
  * - system prompt → instructions
  * - reasoning effort → reasoning: { effort, summary: 'auto' }
  */
+import { createHash } from 'node:crypto'
+
+/** The Responses API rejects `call_id` values longer than 64 characters. */
+export const MAX_CALL_ID_LENGTH = 64
+
+/**
+ * Map a tool-call id onto a value the Responses API accepts.
+ *
+ * DSH keeps the provider's native id for replayed calls, and another provider's
+ * id (for example `toolu_…`, 80+ characters) can end up in a session that later
+ * switches to Codex. Those ids are rejected with `Invalid 'input[N].call_id':
+ * string too long`, so long ids are replaced by a stable hash. The mapping is
+ * deterministic, which keeps the `function_call` item and its matching
+ * `function_call_output` paired across requests.
+ */
+export function clampCallId(id: unknown): string {
+  if (typeof id !== 'string' || id.length === 0) return ''
+  if (id.length <= MAX_CALL_ID_LENGTH) return id
+  return `call_${createHash('sha256').update(id).digest('hex').slice(0, MAX_CALL_ID_LENGTH - 5)}`
+}
+
 export function buildResponsesBody(input: {
   model: string
   messages: readonly { role: string; content: unknown; toolCallId?: string; tool_call_id?: string }[]
@@ -40,7 +61,7 @@ export function buildResponsesBody(input: {
               : String(m.content ?? '')
           return [{
             type: 'function_call_output' as const,
-            call_id: typeof toolCallId === 'string' ? toolCallId : '',
+            call_id: clampCallId(toolCallId),
             output,
           }]
         }
@@ -48,7 +69,7 @@ export function buildResponsesBody(input: {
         if (m.role === 'assistant' && Array.isArray(m.content) && m.content.some(p => p?.type === 'tool-call')) {
           return m.content.flatMap((part): Record<string, unknown>[] => {
             if (part?.type === 'tool-call') {
-              return [{ type: 'function_call', call_id: part.id, name: part.name, arguments: part.arguments }]
+              return [{ type: 'function_call', call_id: clampCallId(part.id), name: part.name, arguments: part.arguments }]
             }
             if (part?.type === 'text') {
               return [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: part.text }] }]
