@@ -63,8 +63,76 @@ export async function refreshCodexModels(): Promise<void> {
   }
 }
 
+/** 读图片附件所需的最小接口（宿主 `attachments` 服务的子集）。 */
+export type AttachmentsReader = {
+  readImage(ref: unknown, signal?: AbortSignal): Promise<{ data?: Uint8Array } | Uint8Array>
+}
+
 type StreamDeps = {
   onRuntimeModels?: (presetId: string, models: readonly CodexReportedModel[]) => void
+  attachmentsOf?: () => AttachmentsReader | undefined
+}
+
+/** 单张图片 base64 上限；超过就不发，避免整轮请求被判过大。 */
+const MAX_IMAGE_BASE64 = 20 * 1024 * 1024
+
+function logImage(line: string): void {
+  try { console.error(line) } catch { /* logging must never break a request */ }
+}
+
+/**
+ * 把消息里的图片附件读成 data URL。
+ *
+ * DSH 的图片内容块只带 attachment 引用，而 Codex /responses 要的是可读的
+ * `input_image`。读不到就降级成占位文本，既不静默丢图，也不让整轮失败。
+ */
+export async function resolveImageParts(
+  messages: readonly { role: string; content: unknown }[],
+  deps: StreamDeps | undefined,
+  signal: AbortSignal | undefined,
+): Promise<{ role: string; content: unknown }[]> {
+  const hasImage = messages.some(m => Array.isArray(m.content)
+    && (m.content as unknown[]).some(p => p !== null && typeof p === 'object' && (p as Record<string, unknown>)['type'] === 'image'))
+  if (!hasImage) return messages as { role: string; content: unknown }[]
+
+  let attachments: AttachmentsReader | undefined
+  try { attachments = deps?.attachmentsOf?.() } catch { attachments = undefined }
+
+  const resolved: { role: string; content: unknown }[] = []
+  for (const message of messages) {
+    if (!Array.isArray(message.content)) {
+      resolved.push(message)
+      continue
+    }
+    const parts: unknown[] = []
+    for (const part of message.content as unknown[]) {
+      const p = part as Record<string, unknown> | null
+      if (p === null || typeof p !== 'object' || p['type'] !== 'image') {
+        parts.push(part)
+        continue
+      }
+      const ref = (p['attachment'] ?? (p['value'] as Record<string, unknown> | undefined)?.['attachment'] ?? p) as Record<string, unknown>
+      const mediaType = typeof ref['mediaType'] === 'string' ? ref['mediaType'] : 'image/png'
+      if (attachments === undefined || typeof attachments.readImage !== 'function') {
+        logImage('[codex] image dropped: attachment service unavailable')
+        parts.push({ type: 'text', text: '[图片无法读取，已省略]' })
+        continue
+      }
+      try {
+        const result = await attachments.readImage(ref, signal)
+        const bytes = result instanceof Uint8Array ? result : result?.data
+        if (bytes === undefined) throw new Error('附件读取没有返回字节')
+        const base64 = Buffer.from(bytes).toString('base64')
+        if (base64.length > MAX_IMAGE_BASE64) throw new Error('图片超过 20MB')
+        parts.push({ type: 'image', mediaType, dataUrl: `data:${mediaType};base64,${base64}` })
+      } catch (error) {
+        logImage(`[codex] image read failed: ${error instanceof Error ? error.message : String(error)}`)
+        parts.push({ type: 'text', text: '[图片读取失败，已省略]' })
+      }
+    }
+    resolved.push({ role: message.role, content: parts })
+  }
+  return resolved
 }
 
 /**
@@ -102,13 +170,17 @@ export function codexModelStream(
     const preset = config.presets[presetId]
     if (preset === undefined || preset.agent !== 'codex-global') return undefined
 
-    return streamWithDiagnostics(presetId, request)
+    return streamWithDiagnostics(presetId, request, deps)
   }
 }
 
 /** One attempt only: the host owns retry delays, attempt persistence and cancellation. */
-async function* streamWithDiagnostics(presetId: string, request: ModelTurnRequest): AsyncGenerator<ModelStreamChunk> {
-  try { yield* streamCodex(presetId, request) }
+async function* streamWithDiagnostics(
+  presetId: string,
+  request: ModelTurnRequest,
+  deps: StreamDeps | undefined,
+): AsyncGenerator<ModelStreamChunk> {
+  try { yield* streamCodex(presetId, request, deps) }
   catch (error) {
     const diagnostic = describeError(error)
     const aborted = (request.signal as AbortSignal | undefined)?.aborted === true || (error instanceof Error && error.name === 'AbortError')
@@ -122,6 +194,7 @@ async function* streamWithDiagnostics(presetId: string, request: ModelTurnReques
 async function* streamCodex(
   _presetId: string,
   request: ModelTurnRequest,
+  deps: StreamDeps | undefined,
 ): AsyncGenerator<ModelStreamChunk> {
   // 1. Load credential
   let credential = await loadCredential()
@@ -134,7 +207,11 @@ async function* streamCodex(
   }
 
   // 2. Build request body
-  const messages = (request.messages ?? []) as { role: string; content: string }[]
+  const messages = await resolveImageParts(
+    (request.messages ?? []) as { role: string; content: unknown }[],
+    deps,
+    request.signal as AbortSignal | undefined,
+  ) as { role: string; content: string }[]
   // Strip [effort] suffix if present (collapseEfforts folds base[effort] → base)
   const body = buildResponsesBody({
     model: request.model,

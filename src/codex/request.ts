@@ -85,13 +85,24 @@ export function buildResponsesBody(input: {
         } else {
           text = String(m.content ?? '')
         }
+        const textType = m.role === 'assistant' ? 'output_text' as const : 'input_text' as const
+        const content: Record<string, unknown>[] = []
+        if (text) content.push({ type: textType, text })
+        // resolveImageParts() reads attachment bytes into a data URL; send it as input_image.
+        if (Array.isArray(m.content)) {
+          for (const part of m.content as unknown[]) {
+            if (part !== null && typeof part === 'object') {
+              const p = part as Record<string, unknown>
+              if (p['type'] === 'image' && typeof p['dataUrl'] === 'string') {
+                content.push({ type: 'input_image', image_url: p['dataUrl'] })
+              }
+            }
+          }
+        }
         return [{
           type: 'message' as const,
           role: m.role,
-          content: [{
-            type: m.role === 'assistant' ? 'output_text' as const : 'input_text' as const,
-            text,
-          }],
+          content: content.length ? content : [{ type: textType, text: '' }],
         }]
       })
       .flat(),

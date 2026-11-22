@@ -13,6 +13,7 @@ import Schema from '@deepseek-ai/schemastery'
 import { modelRowAdapter, providerRoute, runtimeModels } from './modelkit/index.ts'
 import type { ReportedModel } from './modelkit/index.ts'
 import { codexModelStream } from './codex-model.ts'
+import type { AttachmentsReader } from './codex-model.ts'
 import type { PresetConfig } from './registry.ts'
 
 export const name = '@goodjin2/dsh-codex'
@@ -82,12 +83,23 @@ export function apply(ctx: unknown, config: Config): void {
     ledger.record(presetId, models)
   }
 
+  // 图片附件读取口：宿主 `attachments` 服务，缺了就当没有（图片降级为占位文本）。
+  const attachmentsOf = (): AttachmentsReader | undefined => {
+    try {
+      const getter = ctx as { get?: (key: string) => unknown; attachments?: unknown }
+      const found = typeof getter.get === 'function' ? getter.get('attachments') : getter.attachments
+      return found as AttachmentsReader | undefined
+    } catch {
+      return undefined
+    }
+  }
+
   const adapter = modelRowAdapter({
     presetId: config.presetId,
     displayName: 'Codex (Direct)',
     declaredModels: config.models ?? [],
     runtimeModelsOf: (presetId: string): readonly ReportedModel[] | undefined => ledger.modelsOf(presetId),
-    modelStream: codexModelStream(presets, { onRuntimeModels }),
+    modelStream: codexModelStream(presets, { onRuntimeModels, attachmentsOf }),
     collapseEfforts: config.collapseEfforts,
     efforts: config.efforts,
   })
