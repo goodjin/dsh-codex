@@ -10,10 +10,17 @@ async function makeTempHome(): Promise<string> {
 }
 
 describe('loadCatalog', () => {
-  it('returns empty array when models_cache.json is missing', async () => {
+  /**
+   * 缓存读不出来时给兜底清单，不给空清单。
+   *
+   * 2026-11-23 现场：Codex CLI 就地改写 models_cache.json，插件读到半截文件时
+   * 清单是空的——目录账本随之清空，当前型号从目录里消失，输入框里的强度轴
+   * 就没了（宿主把那次选择退回去并报错）。空清单比旧清单坏得多。
+   */
+  it('falls back to the built-in list when models_cache.json is missing', async () => {
     const home = await makeTempHome()
     const result = await loadCatalog({ home })
-    expect(result).toEqual([])
+    expect(result.map(m => m.id)).toEqual(BUILTIN_MODELS.map(m => m.id))
   })
 
   it('parses models from models_cache.json', async () => {
@@ -33,12 +40,12 @@ describe('loadCatalog', () => {
     expect(result[0]!.efforts).toContain('high')
   })
 
-  it('returns empty array for malformed cache', async () => {
+  it('falls back to the built-in list for a malformed cache', async () => {
     const home = await makeTempHome()
     await mkdir(join(home, '.codex'), { recursive: true })
     await writeFile(join(home, '.codex', 'models_cache.json'), 'not json')
     const result = await loadCatalog({ home })
-    expect(result).toEqual([])
+    expect(result.map(m => m.id)).toEqual(BUILTIN_MODELS.map(m => m.id))
   })
 })
 
@@ -48,5 +55,11 @@ describe('BUILTIN_MODELS', () => {
     expect(ids).toContain('gpt-6.1-sol')
     expect(ids).toContain('gpt-6-astra')
     expect(BUILTIN_MODELS.length).toBeGreaterThanOrEqual(5)
+  })
+
+  it('does not offer strengths the endpoint rejects', () => {
+    for (const model of BUILTIN_MODELS) {
+      expect(model.efforts).not.toContain('ultra')
+    }
   })
 })

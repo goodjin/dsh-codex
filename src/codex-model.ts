@@ -22,6 +22,8 @@ export type CodexReportedModel = {
   readonly name: string
   readonly description?: string | undefined
   readonly contextWindow?: number | undefined
+  /** 这个型号自己支持的强度；选择器的强度轴按它画，别一律用声明那份。 */
+  readonly efforts?: readonly string[] | undefined
 }
 
 /**
@@ -61,6 +63,7 @@ export async function refreshCodexModels(): Promise<void> {
       name: m.name,
       ...(m.description === undefined ? {} : { description: m.description }),
       contextWindow: m.contextWindow,
+      efforts: m.efforts,
     })),
     currentSelection(),
   )
@@ -99,6 +102,7 @@ export function codexModelStream(
             name: m.name,
             ...(m.description === undefined ? {} : { description: m.description }),
             contextWindow: m.contextWindow,
+            efforts: m.efforts,
           })),
           currentSelection(),
         )

@@ -107,6 +107,20 @@ describe('codex models route (selection)', () => {
     expect(written.ids).toEqual(['gpt-6-astra'])
   })
 
+  it('POST action=refresh 让宿主重读目录并报回新清单', async () => {
+    useTempHome()
+    const routes = await loadRoutes()
+    const models = routes.find(r => r.path === '/acp-codex/models')!
+
+    const res = fakeResponse()
+    await models.handler(fakeRequest('POST', JSON.stringify({ action: 'refresh' })), res as unknown as ServerResponse)
+    const body = JSON.parse(res.body()) as { ok: boolean; models: { id: string }[]; selected: string[]; default: string[] }
+    expect(body.ok).toBe(true)
+    expect(body.models.map(m => m.id)).toEqual(['gpt-6.1-sol', 'gpt-6-astra'])
+    // 刷新不是勾选：勾中的还是默认那一份。
+    expect(body.selected).toEqual(['gpt-6.1-sol', 'gpt-6-astra'])
+  })
+
   it('POST 不带 ids = 回到默认那一份', async () => {
     useTempHome()
     const routes = await loadRoutes()

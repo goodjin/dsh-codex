@@ -118,11 +118,26 @@ async function readModels(): Promise<ModelChecklistState> {
 }
 
 async function saveSelection(ids: readonly string[]): Promise<void> {
-  await fetch(CODEX_MODELS_URL, {
+  const res = await fetch(CODEX_MODELS_URL, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ ids: [...ids] }),
   })
+  // 宿主没存住就别装作存住了：勾选状态留在本地而宿主不知道，下次刷新就没了。
+  if (!res.ok) throw new Error(`保存勾选失败（${res.status}）`)
+}
+
+/**
+ * 让宿主重读模型目录并重新发布——Codex CLI 随时会改写那份缓存，
+ * 清单变了要能当场刷到选择器里，不用等宿主重启。
+ */
+async function requestRefresh(): Promise<void> {
+  const res = await fetch(CODEX_MODELS_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'refresh' }),
+  })
+  if (!res.ok) throw new Error(`刷新模型列表失败（${res.status}）`)
 }
 
 // --- 视图 ---
@@ -267,6 +282,20 @@ function CodexSettingsSection() {
     }
   }, [])
 
+  // 「刷新模型列表」要让宿主重新发布清单（选择器里的那份），只重读设置里的
+  // 这份没用——两边不一样的时候，看到的还是旧的。
+  const refreshModels = useCallback(async () => {
+    setBusy(true)
+    try {
+      await requestRefresh()
+      setModels(await readModels())
+    } catch {
+      // 刷不动就还是原来那份，别把清单清空。
+    } finally {
+      setBusy(false)
+    }
+  }, [])
+
   useEffect(() => { void checkAuth(); void reloadModels() }, [checkAuth, reloadModels])
 
   const login = useCallback(async () => {
@@ -304,6 +333,9 @@ function CodexSettingsSection() {
       const next = checked
         ? [...current.filter(x => x !== id), id]
         : current.filter(x => x !== id)
+      // 最后一个不让取消：模型行挂零个模型会把当前型号踢出目录，
+      // 输入框里的强度轴跟着消失，宿主把那次选择退回去并报错。
+      if (next.length === 0) return prev
       void saveSelection(next).catch(() => undefined)
       return { ...prev, selected: next, custom: true }
     })
@@ -327,7 +359,7 @@ function CodexSettingsSection() {
         (v: string) => { setQuery(v) },
         (id: string, checked: boolean) => { toggle(id, checked) },
         () => { restoreDefault() },
-        () => { void reloadModels() },
+        () => { void refreshModels() },
         busy,
       )}
     </div>

@@ -59,7 +59,7 @@ export function modelRowAdapter(options: ModelRowAdapterOptions): ModelRowAdapte
   const deps = options
   // 单一真相：一家一旦有运行时清单就用它，没有再用操作员配置的那份。
   // 解析与路由必须读同一份选择器宣告的清单，否则会一边宣告、一边按另一份路由。
-  const modelsFor = (presetId: string): readonly { id: string; name: string; description?: string; contextWindow?: number }[] =>
+  const modelsFor = (presetId: string): readonly { id: string; name: string; description?: string; contextWindow?: number; efforts?: readonly string[] }[] =>
     deps.runtimeModelsOf?.(presetId) ?? deps.declaredModels
 
   const adapter: ModelRowAdapterLike = {

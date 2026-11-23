@@ -33,9 +33,10 @@ describe('codex model selection', () => {
     expect(applySelection([{ id: 'a' }, { id: 'b' }, { id: 'c' }], ['a', 'c'])).toEqual([{ id: 'a' }, { id: 'c' }])
   })
 
-  it('一个都没勾就是空清单（用户就是这么选的）', async () => {
+  it('一个都没勾 = 当作没勾过，清单照旧', async () => {
+    // 一条模型行挂零个模型会把当前型号踢出目录：强度轴消失、宿主报错。
     const { applySelection } = await import('../src/codex/selection.ts')
-    expect(applySelection([{ id: 'a' }], [])).toEqual([])
+    expect(applySelection([{ id: 'a' }], [])).toEqual([{ id: 'a' }])
   })
 
   it('保存后落盘到 DSH_HOME/codex/selection.json，读回来一样', async () => {

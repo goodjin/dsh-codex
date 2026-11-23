@@ -69,7 +69,11 @@ export async function resetSelection(): Promise<void> {
  * 按勾选过滤模型清单。
  *
  * 用户没勾过（`undefined`）→ 原样返回（默认那一份全都在）；
- * 勾过 → 只留勾中的那几个；勾了一个都不剩 → 留空（用户就是这么选的）。
+ * 勾过 → 只留勾中的那几个。
+ *
+ * 勾了一个都不剩 → 当作没勾过，清单照旧。一条模型行挂零个模型是最坏的状态：
+ * 当前型号从目录里消失，输入框里的强度轴跟着消失，宿主把那次选择退回去并报错。
+ * 想停用这一行，把行从 profile 里摘掉，而不是把模型全勾没了。
  *
  * @param models - 整份模型清单。
  * @param selection - 勾选；`undefined` 表示没勾过。
@@ -80,6 +84,7 @@ export function applySelection<T extends { readonly id: string }>(
   selection: readonly string[] | undefined = current,
 ): readonly T[] {
   if (selection === undefined) return models
+  if (selection.length === 0) return models
   const wanted = new Set(selection)
   return models.filter(model => wanted.has(model.id))
 }

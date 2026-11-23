@@ -72,7 +72,7 @@ function baseName(name: string, effort: string): string {
  * @param models - 一行 agent 提供的模型，可能带 `[effort]` 后缀。
  * @returns 每个 base 一条，首次出现的顺序；裸 id 按显示名并条。
  */
-export function collapseEffortModels(models: readonly { id: string; name: string; description?: string; contextWindow?: number }[]): CollapsedModel[] {
+export function collapseEffortModels(models: readonly { id: string; name: string; description?: string; contextWindow?: number; efforts?: readonly string[] }[]): CollapsedModel[] {
   const order: string[] = []
   const byBase = new Map<string, { wireId?: string; displayName: string; description?: string; count: number; efforts: string[]; contextWindow?: number }>()
   for (const model of models) {
@@ -82,7 +82,7 @@ export function collapseEffortModels(models: readonly { id: string; name: string
       const existing = byBase.get(model.name)
       if (existing === undefined) {
         order.push(model.name)
-        byBase.set(model.name, { wireId: model.id, displayName: model.name, count: 1, ...(model.description === undefined ? {} : { description: model.description }), ...(model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow }), efforts: [] })
+        byBase.set(model.name, { wireId: model.id, displayName: model.name, count: 1, ...(model.description === undefined ? {} : { description: model.description }), ...(model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow }), efforts: [...(model.efforts ?? [])] })
       } else {
         existing.count += 1
         if (existing.description === undefined && model.description !== undefined) existing.description = model.description

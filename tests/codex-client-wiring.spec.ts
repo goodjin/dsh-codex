@@ -21,6 +21,18 @@ describe('client wiring', () => {
    * 2026-11-18 现场：设置段里这三样一起没了，界面不报错，只是「少了几样」——
    * 一整块功能凭空消失，没有任何提示。这里把它们钉住，少一样就红。
    */
+  /**
+   * 挂载行声明的强度轴不许摆端点不认的值。
+   *
+   * 2026-11-23 现场：`ultra` 进了选择器，用户一点就 400（端点的词表里没有它），
+   * 强度也选不上去。这里把行配置钉住，别再摆进去。
+   */
+  it('行声明的强度轴不含端点不认的 ultra', () => {
+    const patch = readFileSync(fileURLToPath(new URL('../cordis.patch.yml', import.meta.url)), 'utf8')
+    expect(patch).toContain('efforts:')
+    expect(patch).not.toContain('- id: ultra')
+  })
+
   it('设置段带检查授权、刷新模型列表与模型勾选列表', () => {
     const content = readFileSync(fileURLToPath(new URL('../src/client/index.tsx', import.meta.url)), 'utf8')
     expect(content).toContain('检查授权')
@@ -30,5 +42,7 @@ describe('client wiring', () => {
     // 勾选要落到宿主：POST 宿主路由，宿主才有地方存。
     expect(content).toContain("method: 'POST'")
     expect(content).toContain("CODEX_MODELS_URL")
+    // 「刷新模型列表」要让宿主重新发布清单，只重读设置里那份没用。
+    expect(content).toContain("action: 'refresh'")
   })
 })

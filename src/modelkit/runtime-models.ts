@@ -7,7 +7,13 @@
  */
 
 /** 一个模型，如运行时清单所记。 */
-export type ReportedModel = { readonly id: string; readonly name: string; readonly description?: string }
+export type ReportedModel = {
+  readonly id: string
+  readonly name: string
+  readonly description?: string
+  /** 这个型号自己支持的强度（wire 值）；没报就是没有，调用方按声明兜底。 */
+  readonly efforts?: readonly string[]
+}
 
 /**
  * 各家自己报上来的模型清单，按行分开放。
