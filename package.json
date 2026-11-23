@@ -1,6 +1,6 @@
 {
   "name": "@goodjin2/dsh-codex",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "DSH plugin: Codex model row — calls the Codex /responses endpoint directly and reuses the local Codex CLI OAuth credential.",
   "repository": {
     "type": "git",
