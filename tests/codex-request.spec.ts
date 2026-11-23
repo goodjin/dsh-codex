@@ -95,3 +95,41 @@ it('declares required metadata omitted by kernel_definition_publish without gues
   expect(tool.parameters).toEqual({ ...parameters, properties: { ...parameters.properties, commandId: {} } })
   expect(parameters).toEqual(original)
 })
+
+describe('call_id clamping', () => {
+  const toolRound = (id: string) => buildResponsesBody({
+    model: 'gpt-6-astra',
+    messages: [
+      { role: 'assistant', content: [{ type: 'tool-call', id, name: 'read', arguments: '{}' }] },
+      { role: 'tool', content: 'ok', toolCallId: id },
+    ],
+  }).input as { type: string; call_id?: string }[]
+
+  it('leaves ids within the 64-character limit untouched', () => {
+    const input = toolRound('call_abc123')
+    expect(input[0]!.call_id).toBe('call_abc123')
+    expect(input[1]!.call_id).toBe('call_abc123')
+  })
+
+  it('clamps oversized ids and keeps the call paired with its output', () => {
+    const longId = `toolu_${'x'.repeat(120)}`
+    const input = toolRound(longId)
+    const call = input[0]!.call_id!
+    expect(call.length).toBeLessThanOrEqual(64)
+    expect(call.startsWith('call_')).toBe(true)
+    expect(call).not.toBe(longId)
+    expect(input[1]!.call_id).toBe(call)
+  })
+
+  it('is deterministic so replayed history keeps the same id', () => {
+    const longId = `toolu_${'y'.repeat(90)}`
+    expect(toolRound(longId)[0]!.call_id).toBe(toolRound(longId)[0]!.call_id)
+  })
+
+  it('never emits more than 64 characters for any input length', () => {
+    for (const length of [65, 100, 446]) {
+      const id = `toolu_${'z'.repeat(length)}`
+      expect(toolRound(id)[0]!.call_id!.length).toBeLessThanOrEqual(64)
+    }
+  })
+})
