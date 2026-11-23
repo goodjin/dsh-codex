@@ -13,6 +13,7 @@ import { buildResponsesBody } from './codex/request.ts'
 import { parseResponsesStream, CodexStreamError } from './codex/stream.ts'
 import { describeError, redactDiagnostic, recoveryCode } from './codex/diagnostics.ts'
 import { loadCatalog } from './codex/catalog.ts'
+import { applySelection, currentSelection } from './codex/selection.ts'
 import { updateQuota } from './codex/quota.ts'
 
 /** 运行时清单写进目录账本时用的形状。 */
@@ -49,15 +50,20 @@ const publishers = new Map<string, (models: readonly CodexReportedModel[]) => vo
 
 /**
  * 重新加载模型清单并发布到运行时账本。
+ *
+ * 发布的是用户勾过的那几个：设置里勾了什么，选择器里就只剩什么。
  */
 export async function refreshCodexModels(): Promise<void> {
   const catalog = await loadCatalog()
-  const reported: CodexReportedModel[] = catalog.map(m => ({
-    id: m.id,
-    name: m.name,
-    ...(m.description === undefined ? {} : { description: m.description }),
-    contextWindow: m.contextWindow,
-  }))
+  const reported: readonly CodexReportedModel[] = applySelection(
+    catalog.map(m => ({
+      id: m.id,
+      name: m.name,
+      ...(m.description === undefined ? {} : { description: m.description }),
+      contextWindow: m.contextWindow,
+    })),
+    currentSelection(),
+  )
   for (const publish of publishers.values()) {
     publish(reported)
   }
@@ -87,12 +93,15 @@ export function codexModelStream(
     // Trigger initial catalog load for all registered publishers
     for (const presetId of publishers.keys()) {
       loadCatalog().then(catalog => {
-        const reported: CodexReportedModel[] = catalog.map(m => ({
-          id: m.id,
-          name: m.name,
-          ...(m.description === undefined ? {} : { description: m.description }),
-          contextWindow: m.contextWindow,
-        }))
+        const reported: readonly CodexReportedModel[] = applySelection(
+          catalog.map(m => ({
+            id: m.id,
+            name: m.name,
+            ...(m.description === undefined ? {} : { description: m.description }),
+            contextWindow: m.contextWindow,
+          })),
+          currentSelection(),
+        )
         deps.onRuntimeModels!(presetId, reported)
       }).catch(() => {})
     }

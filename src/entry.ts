@@ -12,7 +12,8 @@
 import Schema from '@deepseek-ai/schemastery'
 import { modelRowAdapter, providerRoute, runtimeModels } from './modelkit/index.ts'
 import type { ReportedModel } from './modelkit/index.ts'
-import { codexModelStream } from './codex-model.ts'
+import { codexModelStream, refreshCodexModels } from './codex-model.ts'
+import { loadSelection } from './codex/selection.ts'
 import type { PresetConfig } from './registry.ts'
 
 export const name = '@goodjin2/dsh-codex'
@@ -81,6 +82,12 @@ export function apply(ctx: unknown, config: Config): void {
   const onRuntimeModels = (presetId: string, models: readonly ReportedModel[]): void => {
     ledger.record(presetId, models)
   }
+
+  // 用户勾了哪些模型：先读进内存快照，模型行第一次发布清单时就按它来。
+  // 读文件是异步的，不等它——第一份清单照常发布，读完之后由刷新补发一次。
+  void loadSelection()
+    .then(() => refreshCodexModels())
+    .catch(() => {})
 
   const adapter = modelRowAdapter({
     presetId: config.presetId,
